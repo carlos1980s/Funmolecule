@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Oxytocin Molecule Visualization (Three.js)</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #111822; /* Slightly blue dark background */
+            color: white;
+            font-family: sans-serif;
+        }
+        canvas {
+            display: block; /* Remove potential extra space below canvas */
+        }
+        .info {
+            position: absolute;
+            bottom: 15px;
+            left: 15px;
+            background: rgba(0, 0, 0, 0.75);
+            color: #eee;
+            padding: 10px 15px;
+            font-family: monospace;
+            font-size: 0.9em;
+            border-radius: 5px;
+            max-width: 400px;
+            z-index: 10; /* Ensure it's above the canvas */
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+        }
+        #loading {
+             position: absolute;
+             top: 50%;
+             left: 50%;
+             transform: translate(-50%, -50%);
+             font-size: 1.5em;
+             font-family: monospace;
+             color: #ccc;
+             z-index: 20;
+             background: rgba(0, 0, 0, 0.5);
+             padding: 1em;
+             border-radius: 8px;
+        }
+        a {
+            color: #66aaff;
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading indicator -->
+    <div id="loading">Loading 3D Scene...</div>
+
+    <!-- Container for Three.js canvas -->
+    <div id="container"></div>
+
+    <!-- Information box -->
+    <div class="info">
+        <h3>Oxytocin Molecule Visualization</h3>
+        <p>Built with <a href="https://threejs.org/" target="_blank" rel="noopener">Three.js</a>. Molecule rotates automatically. Use mouse/touch to orbit, pan, and zoom.</p>
+        <p>Disulfide bridge (Sulfur-Sulfur) is highlighted in gold.</p>
+    </div>
+
+    <!-- Import map for Three.js modules -->
+    <!-- Specifies where to find 'three' and 'three/addons/' -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.162.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.162.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <!-- Main Three.js application script -->
+    <script type="module">
+        // Import necessary Three.js components
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- Global Variables ---
+        let scene, camera, renderer, controls, moleculeGroup;
+        const container = document.getElementById('container');
+        const loadingElement = document.getElementById('loading');
+        const clock = new THREE.Clock(); // For animation timing if needed
+
+        // --- Molecule Data ---
+        // Simplified coordinates based on previous attempts
+        const atomData = [
+            // Element, x, y, z | Index
+            { el: 'S', x: -5.0, y: 8.0, z: 0.0 },  // 0
+            { el: 'C', x: -7.0, y: 6.0, z: 0.0 },  // 1
+            { el: 'C', x: -3.0, y: 5.0, z: 0.0 },  // 2
+            { el: 'C', x:  0.0, y: 3.0, z: 0.0 },  // 3 (ring)
+            { el: 'C', x:  1.0, y: 5.0, z: 0.0 },  // 4 (ring)
+            { el: 'O', x:  2.0, y: 7.0, z: 1.0 },  // 5
+            { el: 'N', x:  4.0, y: 1.0, z: 0.0 },  // 6
+            { el: 'O', x:  8.0, y:10.0, z: 0.0 },  // 7
+            { el: 'S', x:  2.0, y:-3.0, z: 0.0 },  // 8
+            { el: 'C', x:  0.0, y:-5.0, z: 0.0 },  // 9
+            { el: 'N', x: -2.0, y:-6.0, z: 0.0 },  // 10
+            { el: 'C', x: -5.0, y:-5.0, z: 0.0 },  // 11
+            { el: 'N', x: -7.0, y: 0.0, z: 0.0 },  // 12
+            { el: 'C', x: -9.0, y: 2.0, z: 0.0 },  // 13
+            { el: 'O', x: -9.0, y: 4.0, z: 0.0 }   // 14
+        ];
+
+        // Bonds defined by pairs of indices from atomData
+        const bondData = [
+            [0, 8], // Disulfide bridge (Special)
+            [0, 1], [1, 2], [2, 3], [3, 4],
+            [4, 5], [4, 6], // Simplified connections based on proximity in list
+            [6, 7], [8, 9], [9, 10],
+            [10, 11], [11, 12], [12, 13], [13, 14]
+            // Note: Add more bonds here if needed for a more complete structure
+        ];
+
+        // --- CPK Colors and Radii (Approximate Van der Waals radii) ---
+        const cpk = {
+            'H': { color: 0xffffff, radius: 0.3 }, // Example
+            'C': { color: 0x555555, radius: 0.7 },
+            'N': { color: 0x3333ff, radius: 0.65},
+            'O': { color: 0xff3333, radius: 0.6 },
+            'S': { color: 0xffff33, radius: 1.0 }
+        };
+
+        // Bond appearance
+        const bondRadius = 0.18; // Slightly thicker bonds
+        const bondColor = 0x666666;
+        const disulfideBondColor = 0xffb700; // A distinct gold color
+        const bondDetail = 8; // Segments around bond cylinder (lower for performance)
+
+        // --- Initialization Function ---
+        function init() {
+            try {
+                // --- Scene ---
+                scene = new THREE.Scene();
+                scene.background = new THREE.Color(0x111822);
+                // scene.fog = new THREE.Fog(scene.background, 40, 80); // Optional fog
+
+                // --- Camera ---
+                camera = new THREE.PerspectiveCamera(
+                    60, // Field of View
+                    window.innerWidth / window.innerHeight, // Aspect Ratio
+                    0.1, // Near clipping plane
+                    1000 // Far clipping plane
+                );
+                camera.position.set(0, 5, 35); // Adjusted initial position
+
+                // --- Renderer ---
+                renderer = new THREE.WebGLRenderer({ antialias: true });
+                renderer.setPixelRatio(window.devicePixelRatio); // For high-DPI displays
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                // renderer.outputColorSpace = THREE.SRGBColorSpace; // Correct color handling
+                container.appendChild(renderer.domElement); // Add canvas to the container div
+
+                // --- Lighting ---
+                const ambientLight = new THREE.AmbientLight(0xcccccc, 1.0); // Increase ambient slightly
+                scene.add(ambientLight);
+
+                const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.5);
+                dirLight1.position.set(1, 1, 1);
+                scene.add(dirLight1);
+
+                const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.8);
+                dirLight2.position.set(-1, -0.5, -1);
+                scene.add(dirLight2);
+
+                // --- Controls ---
+                controls = new OrbitControls(camera, renderer.domElement);
+                controls.enableDamping = true;
+                controls.dampingFactor = 0.05;
+                controls.screenSpacePanning = false; // Panning respects world orientation
+                controls.minDistance = 5;
+                controls.maxDistance = 150;
+                controls.target.set(0, 0, 0); // Ensure controls start looking at the origin
+                controls.update();
+
+                // --- Build Molecule ---
+                buildMolecule();
+
+                // --- Event Listeners ---
+                window.addEventListener('resize', onWindowResize);
+
+                // Hide loading message now that setup is done
+                loadingElement.style.display = 'none';
+                console.log("Three.js scene initialized successfully.");
+
+            } catch (error) {
+                // Catch potential errors during initialization
+                console.error("Error during Three.js initialization:", error);
+                loadingElement.textContent = "Error initializing 3D scene. Check console.";
+                loadingElement.style.color = "red";
+            }
+        }
+
+        // --- Molecule Building Function ---
+        function buildMolecule() {
+            moleculeGroup = new THREE.Group();
+            const atomPositions = []; // Store Vector3 for bonds
+
+            // Create Atoms
+            atomData.forEach((atom) => {
+                const info = cpk[atom.el] || cpk['C']; // Default to Carbon if element unknown
+                const geometry = new THREE.SphereGeometry(info.radius, 16, 12); // Quality of sphere
+                const material = new THREE.MeshStandardMaterial({
+                    color: info.color,
+                    roughness: 0.4,
+                    metalness: 0.2
+                 });
+                const sphere = new THREE.Mesh(geometry, material);
+                const position = new THREE.Vector3(atom.x, atom.y, atom.z);
+                sphere.position.copy(position);
+                moleculeGroup.add(sphere);
+                atomPositions.push(position); // Store position for bonds
+            });
+
+            // Create Bonds
+            const bondMaterial = new THREE.MeshStandardMaterial({
+                color: bondColor,
+                roughness: 0.6,
+                metalness: 0.1
+            });
+            // Special material for the disulfide bridge
+            const disulfideMaterial = new THREE.MeshStandardMaterial({
+                color: disulfideBondColor,
+                roughness: 0.4,
+                metalness: 0.2,
+                // emissive: disulfideBondColor, // Optional glow
+                // emissiveIntensity: 0.2
+            });
+
+            bondData.forEach(bondIndices => {
+                if (bondIndices.length !== 2 || bondIndices[0] >= atomPositions.length || bondIndices[1] >= atomPositions.length) {
+                    console.warn("Skipping invalid bond data:", bondIndices);
+                    return; // Skip invalid bond data
+                }
+                const indexA = bondIndices[0];
+                const indexB = bondIndices[1];
+                const posA = atomPositions[indexA];
+                const posB = atomPositions[indexB];
+
+                // Choose material (special check for S-S bond)
+                const isDisulfide = (atomData[indexA].el === 'S' && atomData[indexB].el === 'S');
+                const material = isDisulfide ? disulfideMaterial : bondMaterial;
+
+                // Calculate bond properties
+                const direction = new THREE.Vector3().subVectors(posB, posA);
+                const distance = direction.length();
+                if (distance < 0.01) return; // Avoid zero-length bonds
+
+                // Create geometry
+                const geometry = new THREE.CylinderGeometry(bondRadius, bondRadius, distance, bondDetail, 1, false); // Open-ended cylinder
+
+                const bondMesh = new THREE.Mesh(geometry, material);
+
+                // Position and Orient the cylinder
+                bondMesh.position.copy(posA).addScaledVector(direction, 0.5); // Position at midpoint
+                bondMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize()); // Orient along bond direction
+
+                moleculeGroup.add(bondMesh);
+            });
+
+             // Center the molecule group - useful if coordinates aren't centered
+            const box = new THREE.Box3().setFromObject(moleculeGroup);
+            const center = box.getCenter(new THREE.Vector3());
+            moleculeGroup.position.sub(center); // Shift group origin to calculated center
+
+            scene.add(moleculeGroup);
+
+            // Optional: Update controls target to the new center if molecule was shifted
+            // controls.target.copy(center); controls.update(); // This might feel odd if combined with auto-rotation
+        }
+
+
+        // --- Resize Handler ---
+        function onWindowResize() {
+            if (!camera || !renderer) return; // Check if initialized
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- Animation Loop ---
+        function animate() {
+            requestAnimationFrame(animate); // Loop
+
+            if (!controls || !renderer || !scene || !camera) return; // Ensure everything is ready
+
+            const delta = clock.getDelta(); // Time since last frame
+
+            controls.update(); // Required if damping is enabled
+
+            // Gentle auto-rotation (rotate the group containing the molecule)
+            if (moleculeGroup) {
+                moleculeGroup.rotation.y += delta * 0.2; // Rotate speed based on delta time
+            }
+
+            renderer.render(scene, camera); // Render the scene
+        }
+
+        // --- Start the application ---
+        init();
+        animate();
+
+    </script>
+</body>
+</html>
