@@ -1,305 +1,219 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Oxytocin Molecule Visualization (Three.js)</title>
+    <title>Oxytocin - Ghost Molecules (Key Spawn)</title> <!-- Updated Title -->
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
     <style>
-        body {
-            margin: 0;
-            overflow: hidden;
-            background-color: #111822; /* Slightly blue dark background */
-            color: white;
-            font-family: sans-serif;
-        }
-        canvas {
-            display: block; /* Remove potential extra space below canvas */
-        }
-        .info {
-            position: absolute;
-            bottom: 15px;
-            left: 15px;
-            background: rgba(0, 0, 0, 0.75);
-            color: #eee;
-            padding: 10px 15px;
-            font-family: monospace;
-            font-size: 0.9em;
-            border-radius: 5px;
-            max-width: 400px;
-            z-index: 10; /* Ensure it's above the canvas */
-            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
-        }
-        #loading {
-             position: absolute;
-             top: 50%;
-             left: 50%;
-             transform: translate(-50%, -50%);
-             font-size: 1.5em;
-             font-family: monospace;
-             color: #ccc;
-             z-index: 20;
-             background: rgba(0, 0, 0, 0.5);
-             padding: 1em;
-             border-radius: 8px;
-        }
-        a {
-            color: #66aaff;
-        }
+        /* (Keep the same CSS) */
+        body { margin: 0; overflow: hidden; background-color: #000000; color: white; font-family: sans-serif; }
+        canvas { display: block; }
+        .info { position: absolute; bottom: 15px; left: 15px; background: rgba(0, 0, 0, 0.8); color: #eee; padding: 10px 15px; font-family: monospace; font-size: 0.9em; border-radius: 5px; max-width: 450px; z-index: 10; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+        #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 1.5em; font-family: monospace; color: #ccc; z-index: 20; background: rgba(0, 0, 0, 0.5); padding: 1em; border-radius: 8px; }
+        a { color: #66aaff; }
+        strong { color: #ff6666; }
+        .warning { color: #ffcc66; font-weight: bold;}
     </style>
 </head>
 <body>
-    <!-- Loading indicator -->
-    <div id="loading">Loading 3D Scene...</div>
-
-    <!-- Container for Three.js canvas -->
+    <div id="loading">Building Scene...</div>
     <div id="container"></div>
-
-    <!-- Information box -->
     <div class="info">
         <h3>Oxytocin Molecule Visualization</h3>
-        <p>Built with <a href="https://threejs.org/" target="_blank" rel="noopener">Three.js</a>. Molecule rotates automatically. Use mouse/touch to orbit, pan, and zoom.</p>
-        <p>Disulfide bridge (Sulfur-Sulfur) is highlighted in gold.</p>
+        <p class="warning">Disclaimer: Uses estimated atom positions. Vibration, movement & background are visual effects.</p>
+        <p>Representation: Wandering Molecule with Ghost Molecules (Press 'A' to Spawn) & Dynamic Background.</p> <!-- Updated Desc -->
     </div>
 
-    <!-- Import map for Three.js modules -->
-    <!-- Specifies where to find 'three' and 'three/addons/' -->
     <script type="importmap">
         {
             "imports": {
-                "three": "https://unpkg.com/three@0.162.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.162.0/examples/jsm/"
+                "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
             }
         }
     </script>
 
-    <!-- Main Three.js application script -->
     <script type="module">
-        // Import necessary Three.js components
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
         // --- Global Variables ---
-        let scene, camera, renderer, controls, moleculeGroup;
+        let scene, camera, renderer, controls, moleculeGroup, backgroundMaterial;
+        let ghostMolecules = [];
+        let isMoleculeReady = false;
         const container = document.getElementById('container');
         const loadingElement = document.getElementById('loading');
-        const clock = new THREE.Clock(); // For animation timing if needed
+        const clock = new THREE.Clock();
 
-        // --- Molecule Data ---
-        // Simplified coordinates based on previous attempts
-        const atomData = [
-            // Element, x, y, z | Index
-            { el: 'S', x: -5.0, y: 8.0, z: 0.0 },  // 0
-            { el: 'C', x: -7.0, y: 6.0, z: 0.0 },  // 1
-            { el: 'C', x: -3.0, y: 5.0, z: 0.0 },  // 2
-            { el: 'C', x:  0.0, y: 3.0, z: 0.0 },  // 3 (ring)
-            { el: 'C', x:  1.0, y: 5.0, z: 0.0 },  // 4 (ring)
-            { el: 'O', x:  2.0, y: 7.0, z: 1.0 },  // 5
-            { el: 'N', x:  4.0, y: 1.0, z: 0.0 },  // 6
-            { el: 'O', x:  8.0, y:10.0, z: 0.0 },  // 7
-            { el: 'S', x:  2.0, y:-3.0, z: 0.0 },  // 8
-            { el: 'C', x:  0.0, y:-5.0, z: 0.0 },  // 9
-            { el: 'N', x: -2.0, y:-6.0, z: 0.0 },  // 10
-            { el: 'C', x: -5.0, y:-5.0, z: 0.0 },  // 11
-            { el: 'N', x: -7.0, y: 0.0, z: 0.0 },  // 12
-            { el: 'C', x: -9.0, y: 2.0, z: 0.0 },  // 13
-            { el: 'O', x: -9.0, y: 4.0, z: 0.0 }   // 14
-        ];
+        // --- Configuration (Adjusted for Debugging) ---
+        const MAX_GHOSTS = 15; // Allow more ghosts for manual spawning
+        const GHOST_LIFESPAN = 15.0;
+        const GHOST_FADE_TIME = 1.5;
+        const GHOST_SPREAD_RADIUS = 70; // Increased radius slightly
+        const GHOST_ROTATION_SPEED = 0.2;
 
-        // Bonds defined by pairs of indices from atomData
-        const bondData = [
-            [0, 8], // Disulfide bridge (Special)
-            [0, 1], [1, 2], [2, 3], [3, 4],
-            [4, 5], [4, 6], // Simplified connections based on proximity in list
-            [6, 7], [8, 9], [9, 10],
-            [10, 11], [11, 12], [12, 13], [13, 14]
-            // Note: Add more bonds here if needed for a more complete structure
-        ];
+        // --- Visual Effect Parameters ---
+        const VIBRATION_AMPLITUDE = 0.07; const VIBRATION_SPEED = 3.5; const MOVEMENT_RADIUS_X = 2.5; const MOVEMENT_RADIUS_Y = 1.5; const MOVEMENT_RADIUS_Z = 2.0; const MOVEMENT_SPEED_X = 0.15; const MOVEMENT_SPEED_Y = 0.18; const MOVEMENT_SPEED_Z = 0.22;
 
-        // --- CPK Colors and Radii (Approximate Van der Waals radii) ---
-        const cpk = {
-            'H': { color: 0xffffff, radius: 0.3 }, // Example
-            'C': { color: 0x555555, radius: 0.7 },
-            'N': { color: 0x3333ff, radius: 0.65},
-            'O': { color: 0xff3333, radius: 0.6 },
-            'S': { color: 0xffff33, radius: 1.0 }
-        };
+        // --- Atom Data & Constants ---
+        const estimatedAtomData = [ /* ... Omitted ... */ { el: 'S', x: -0.5, y: 1.0, z: 0.5 },{ el: 'S', x: 0.8, y: 0.5, z: -0.5 },{ el: 'C', x: -1.8, y: 1.8, z: 0.8 },{ el: 'C', x: -2.5, y: 2.5, z: -0.2 },{ el: 'N', x: -3.5, y: 1.8, z: -0.8 },{ el: 'C', x: -1.8, y: 3.5, z: -1.0 },{ el: 'O', x: -1.5, y: 4.5, z: -1.5 },{ el: 'H', x: -4.0, y: 2.2, z: -1.5 },{ el: 'H', x: -3.8, y: 0.9, z: -0.5 },{ el: 'C', x: 2.0, y: 1.5, z: -0.8 },{ el: 'C', x: 2.8, y: 1.0, z: 0.2 },{ el: 'N', x: 3.5, y: 2.0, z: 0.8 },{ el: 'C', x: 2.0, y: 0.0, z: 1.0 },{ el: 'O', x: 1.5, y: -0.8, z: 1.5 },{ el: 'C', x: 5.0, y: 4.0, z: 1.0 },{ el: 'C', x: 4.5, y: 5.2, z: 0.5 },{ el: 'C', x: 3.2, y: 5.5, z: 0.2 },{ el: 'C', x: 2.5, y: 4.5, z: 0.4 },{ el: 'C', x: 3.0, y: 3.3, z: 0.8 },{ el: 'C', x: 4.3, y: 3.0, z: 1.1 },{ el: 'O', x: 2.0, y: 2.5, z: 1.2 },{ el: 'H', x: 1.3, y: 3.0, z: 1.5 },{ el: 'C', x: 4.8, y: 2.0, z: -0.5 },{ el: 'C', x: 3.8, y: 1.0, z: -1.0 },{ el: 'N', x: 4.5, y: 0.0, z: -1.5 },{ el: 'C', x: 2.8, y: 0.5, z: -2.0 },{ el: 'O', x: 2.0, y: 1.0, z: -2.5 },{ el: 'C', x: -4.0, y: -1.0, z: 0.5 },{ el: 'C', x: -5.0, y: -1.5, z: -0.5},{ el: 'C', x: -4.5, y: -2.5, z: 0.8 },{ el: 'C', x: -3.0, y: -2.0, z: 1.2 },{ el: 'N', x: -2.0, y: -1.5, z: 0.0 },{ el: 'C', x: -1.0, y: -2.5, z: 0.5 },{ el: 'O', x: -0.5, y: -3.5, z: 0.8 },{ el: 'C', x: -6.0, y: -0.5, z: -1.0},{ el: 'C', x: -6.5, y: -1.5, z: -1.8},{ el: 'C', x: -7.0, y: 0.5, z: -0.5},{ el: 'C', x: 5.5, y: -1.0, z: 0.0 },{ el: 'C', x: 6.5, y: -1.5, z: 1.0 },{ el: 'N', x: 6.0, y: -2.5, z: -0.5},{ el: 'H', x: 5.5, y: -3.0, z: -1.0},{ el: 'H', x: 6.8, y: -2.8, z: -0.2},{ el: 'O', x: 7.5, y: -1.0, z: 1.5 },{ el: 'C', x: 4.0, y: -1.5, z: -1.0 },{ el: 'N', x: 3.0, y: -2.0, z: 0.0 },{ el: 'O', x: 4.5, y: -2.5, z: -1.8 },{ el: 'C', x: 1.5, y: -2.0, z: -1.0 },{ el: 'N', x: -0.5, y: -0.8, z: -0.8},{ el: 'C', x: -1.5, y: -0.2, z: -1.5},{ el: 'C', x: -2.5, y: 0.5, z: -0.5},{ el: 'O', x: -2.0, y: -0.5, z: -2.5},{ el: 'N', x: 1.0, y: -1.5, z: 0.0},{ el: 'C', x: 2.0, y: -2.5, z: 0.5},{ el: 'C', x: 3.0, y: -1.8, z: 1.5},{ el: 'O', x: 1.5, y: -3.5, z: -0.2},{ el: 'H', x: -3.0, y: 3.0, z: 0.5 },{ el: 'H', x: -2.8, y: 1.8, z: 1.5 },{ el: 'H', x: 3.5, y: 2.8, z: 1.5 },{ el: 'H', x: 6.0, y: 4.5, z: 0.0 },{ el: 'H', x: -5.5, y: -2.0, z: 1.5 },{ el: 'H', x: -7.5, y: -1.0, z: -2.2 },{ el: 'H', x: 7.0, y: -2.0, z: -1.0 },{ el: 'H', x: 5.0, y: -3.0, z: -2.2 }, ];
+        const vdwRadii = { /* ... Omitted ... */ 'H': 1.20, 'C': 1.70, 'N': 1.55, 'O': 1.52, 'S': 1.80, 'DEFAULT': 1.5 };
+        const cpkColors = { /* ... Omitted ... */ 'H': 0xffffff, 'C': 0x555555, 'N': 0x3333ff, 'O': 0xff3333, 'S': 0xdddd00, 'DEFAULT': 0xff00ff };
+        const ATOM_SCALE = 0.9;
 
-        // Bond appearance
-        const bondRadius = 0.18; // Slightly thicker bonds
-        const bondColor = 0x666666;
-        const disulfideBondColor = 0xffb700; // A distinct gold color
-        const bondDetail = 8; // Segments around bond cylinder (lower for performance)
+        // --- Background Shader Definitions ---
+        const backgroundVertexShader = `/* ... Omitted ... */ varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 ); }`;
+        const backgroundFragmentShader = `/* ... Omitted ... */ precision highp float; uniform vec2 u_resolution; uniform float u_time; varying vec2 vUv; mat2 rotate2D(float angle) { float s = sin(angle); float c = cos(angle); return mat2(c, -s, s, c); } void main() { vec2 r = u_resolution; float t = u_time; vec2 p = vUv * r; vec2 l = (p + p - r) / r.x * 0.5 + vec2(-0.15, 0.1); vec2 q; vec2 n = vec2(0.0); float s = 6.0; float h = 0.0; float i = 0.0; float L = dot(l, l); float e = 129.0; for(; i < e; i++) { l = rotate2D(4.95) * l; mat2 rotation_matrix_n = rotate2D(4.8 + sin(t) * 0.05) + rotate2D(t) * 0.035; n = rotation_matrix_n * n; q = l * s * (i + 1.0) + n; h += dot(vec2(1.0), sin(q) / s * 3.5); n += cos(q); s *= 1.05; } h = 0.4 - h * 0.3 - L; vec3 o = vec3(h * 0.9); vec3 baseColor = vec3(0.02, 0.05, 0.1); vec3 color = baseColor + o * 1.2; gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0); }`;
+
 
         // --- Initialization Function ---
         function init() {
             try {
-                // --- Scene ---
                 scene = new THREE.Scene();
-                scene.background = new THREE.Color(0x111822);
-                // scene.fog = new THREE.Fog(scene.background, 40, 80); // Optional fog
+                scene.fog = new THREE.FogExp2(0x05080D, 0.03);
 
-                // --- Camera ---
-                camera = new THREE.PerspectiveCamera(
-                    60, // Field of View
-                    window.innerWidth / window.innerHeight, // Aspect Ratio
-                    0.1, // Near clipping plane
-                    1000 // Far clipping plane
-                );
-                camera.position.set(0, 5, 35); // Adjusted initial position
+                camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.5, 1000);
+                camera.position.set(0, 5, 50);
 
-                // --- Renderer ---
                 renderer = new THREE.WebGLRenderer({ antialias: true });
-                renderer.setPixelRatio(window.devicePixelRatio); // For high-DPI displays
+                renderer.setPixelRatio(window.devicePixelRatio);
                 renderer.setSize(window.innerWidth, window.innerHeight);
-                // renderer.outputColorSpace = THREE.SRGBColorSpace; // Correct color handling
-                container.appendChild(renderer.domElement); // Add canvas to the container div
+                container.appendChild(renderer.domElement);
 
                 // --- Lighting ---
-                const ambientLight = new THREE.AmbientLight(0xcccccc, 1.0); // Increase ambient slightly
-                scene.add(ambientLight);
+                const ambientLight = new THREE.AmbientLight(0xcccccc, 1.2); scene.add(ambientLight);
+                const light1 = new THREE.DirectionalLight(0xffffff, 2.5); light1.position.set(1, 1, 2); scene.add(light1);
+                const light2 = new THREE.DirectionalLight(0xaaaaff, 1.0); light2.position.set(-1, -0.5, -1); scene.add(light2);
 
-                const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.5);
-                dirLight1.position.set(1, 1, 1);
-                scene.add(dirLight1);
-
-                const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.8);
-                dirLight2.position.set(-1, -0.5, -1);
-                scene.add(dirLight2);
-
-                // --- Controls ---
                 controls = new OrbitControls(camera, renderer.domElement);
-                controls.enableDamping = true;
-                controls.dampingFactor = 0.05;
-                controls.screenSpacePanning = false; // Panning respects world orientation
-                controls.minDistance = 5;
-                controls.maxDistance = 150;
-                controls.target.set(0, 0, 0); // Ensure controls start looking at the origin
-                controls.update();
+                controls.enableDamping = true; controls.dampingFactor = 0.05;
+                controls.minDistance = 10; controls.maxDistance = 150; controls.target.set(0,0,0);
 
-                // --- Build Molecule ---
-                buildMolecule();
+                setupBackground();
+                buildMoleculeFromManualData();
 
-                // --- Event Listeners ---
+                // --- Add Keyboard Listener ---
+                window.addEventListener('keydown', handleKeyDown);
+
                 window.addEventListener('resize', onWindowResize);
-
-                // Hide loading message now that setup is done
                 loadingElement.style.display = 'none';
-                console.log("Three.js scene initialized successfully.");
+                console.log("Three.js scene initialized. Press 'A' to spawn ghost molecules.");
 
-            } catch (error) {
-                // Catch potential errors during initialization
-                console.error("Error during Three.js initialization:", error);
-                loadingElement.textContent = "Error initializing 3D scene. Check console.";
-                loadingElement.style.color = "red";
-            }
+            } catch (error) { /* ... error handling ... */ console.error("Error during Three.js initialization:", error); loadingElement.textContent = "Error initializing 3D scene. Check console."; loadingElement.style.color = "red"; loadingElement.style.display = 'block'; }
         }
 
-        // --- Molecule Building Function ---
-        function buildMolecule() {
-            moleculeGroup = new THREE.Group();
-            const atomPositions = []; // Store Vector3 for bonds
+        // --- Setup Background ---
+        function setupBackground() { /* ... Omitted but keep ... */ const backgroundGeometry = new THREE.SphereGeometry(500, 64, 32); backgroundMaterial = new THREE.ShaderMaterial({ uniforms: { u_time: { value: 0.0 }, u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }, }, vertexShader: backgroundVertexShader, fragmentShader: backgroundFragmentShader, side: THREE.BackSide, depthWrite: false, fog: false }); const backgroundMesh = new THREE.Mesh(backgroundGeometry, backgroundMaterial); scene.add(backgroundMesh); }
 
-            // Create Atoms
-            atomData.forEach((atom) => {
-                const info = cpk[atom.el] || cpk['C']; // Default to Carbon if element unknown
-                const geometry = new THREE.SphereGeometry(info.radius, 16, 12); // Quality of sphere
-                const material = new THREE.MeshStandardMaterial({
-                    color: info.color,
-                    roughness: 0.4,
-                    metalness: 0.2
-                 });
-                const sphere = new THREE.Mesh(geometry, material);
-                const position = new THREE.Vector3(atom.x, atom.y, atom.z);
-                sphere.position.copy(position);
-                moleculeGroup.add(sphere);
-                atomPositions.push(position); // Store position for bonds
-            });
+        // --- Build Molecule from Manual Data ---
+        function buildMoleculeFromManualData() { /* ... Omitted but keep, ensure isMoleculeReady = true at the end ... */ moleculeGroup = new THREE.Group(); const sphereGeometry = new THREE.IcosahedronGeometry(1, 3); const materials = {}; function getMaterial(element) { const colorHex = cpkColors[element] || cpkColors.DEFAULT; if (!materials[colorHex]) { materials[colorHex] = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.6, metalness: 0.1 }); if (element === 'S') { materials[colorHex].color = new THREE.Color(0xffd700); materials[colorHex].roughness = 0.4; } } return materials[colorHex]; } estimatedAtomData.forEach((atom, index) => { const radius = (vdwRadii[atom.el] || vdwRadii.DEFAULT) * ATOM_SCALE; const material = getMaterial(atom.el); const atomSphere = new THREE.Mesh(sphereGeometry, material); const basePosition = new THREE.Vector3(atom.x, atom.y, atom.z); atomSphere.position.copy(basePosition); atomSphere.scale.setScalar(radius); atomSphere.userData.isAtom = true; atomSphere.userData.basePosition = basePosition; atomSphere.userData.atomIndex = index; moleculeGroup.add(atomSphere); }); const box = new THREE.Box3().setFromObject(moleculeGroup); const center = box.getCenter(new THREE.Vector3()); moleculeGroup.position.sub(center); scene.add(moleculeGroup); if (controls) { controls.target.set(0, 0, 0); controls.update(); } console.log("Main molecule built."); isMoleculeReady = true; }
 
-            // Create Bonds
-            const bondMaterial = new THREE.MeshStandardMaterial({
-                color: bondColor,
-                roughness: 0.6,
-                metalness: 0.1
-            });
-            // Special material for the disulfide bridge
-            const disulfideMaterial = new THREE.MeshStandardMaterial({
-                color: disulfideBondColor,
-                roughness: 0.4,
-                metalness: 0.2,
-                // emissive: disulfideBondColor, // Optional glow
-                // emissiveIntensity: 0.2
-            });
 
-            bondData.forEach(bondIndices => {
-                if (bondIndices.length !== 2 || bondIndices[0] >= atomPositions.length || bondIndices[1] >= atomPositions.length) {
-                    console.warn("Skipping invalid bond data:", bondIndices);
-                    return; // Skip invalid bond data
+        // --- Spawn a Ghost Molecule (Manual Trigger) ---
+        function spawnGhostMoleculeNow(spawnTime) { // Renamed slightly for clarity
+             if (!isMoleculeReady || !moleculeGroup || moleculeGroup.children.length === 0) {
+                 console.warn("[Spawn Abort] Main molecule not ready.");
+                 return; // Wait until main molecule is fully built
+             }
+
+             if (ghostMolecules.length >= MAX_GHOSTS) {
+                 console.log("[Spawn Limit] Reached max ghosts:", MAX_GHOSTS);
+                 return;
+             }
+
+            console.log(`[Spawn Triggered] Spawning ghost at time ${spawnTime.toFixed(1)}...`);
+
+            const ghost = moleculeGroup.clone(true); // Recursive clone
+
+            // Material Cloning and Setup
+            let clonedMaterialCount = 0;
+            ghost.traverse((child) => {
+                if (child.isMesh && child.material) {
+                    child.material = child.material.clone();
+                    child.material.transparent = true;
+                    child.material.opacity = 0.0;
+                    child.material.depthWrite = false;
+                    child.material.needsUpdate = true;
+                    child.userData.isGhostAtom = true;
+                    clonedMaterialCount++;
                 }
-                const indexA = bondIndices[0];
-                const indexB = bondIndices[1];
-                const posA = atomPositions[indexA];
-                const posB = atomPositions[indexB];
-
-                // Choose material (special check for S-S bond)
-                const isDisulfide = (atomData[indexA].el === 'S' && atomData[indexB].el === 'S');
-                const material = isDisulfide ? disulfideMaterial : bondMaterial;
-
-                // Calculate bond properties
-                const direction = new THREE.Vector3().subVectors(posB, posA);
-                const distance = direction.length();
-                if (distance < 0.01) return; // Avoid zero-length bonds
-
-                // Create geometry
-                const geometry = new THREE.CylinderGeometry(bondRadius, bondRadius, distance, bondDetail, 1, false); // Open-ended cylinder
-
-                const bondMesh = new THREE.Mesh(geometry, material);
-
-                // Position and Orient the cylinder
-                bondMesh.position.copy(posA).addScaledVector(direction, 0.5); // Position at midpoint
-                bondMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize()); // Orient along bond direction
-
-                moleculeGroup.add(bondMesh);
             });
 
-             // Center the molecule group - useful if coordinates aren't centered
-            const box = new THREE.Box3().setFromObject(moleculeGroup);
-            const center = box.getCenter(new THREE.Vector3());
-            moleculeGroup.position.sub(center); // Shift group origin to calculated center
+            if (clonedMaterialCount === 0) {
+                console.error("[Spawn Error] Failed to find/clone any materials for the ghost!");
+                return;
+            }
+            console.log(`[Spawn] Cloned ${clonedMaterialCount} materials for ghost ${ghost.uuid}`);
 
-            scene.add(moleculeGroup);
+            // Random position
+            ghost.position.set(
+                (Math.random() - 0.5) * GHOST_SPREAD_RADIUS * 2,
+                (Math.random() - 0.5) * GHOST_SPREAD_RADIUS * 1.5,
+                (Math.random() - 0.5) * GHOST_SPREAD_RADIUS * 2 + camera.position.z - 30 // Spawn closer to camera Z plane for visibility
+            );
+             // Random initial rotation
+             ghost.rotation.set( Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, Math.random() * Math.PI * 2 );
+             // Start scaled small
+             ghost.scale.setScalar(0.01);
 
-            // Optional: Update controls target to the new center if molecule was shifted
-            // controls.target.copy(center); controls.update(); // This might feel odd if combined with auto-rotation
+            // User data for lifecycle
+            ghost.userData.isGhost = true;
+            ghost.userData.spawnTime = spawnTime; // Use the passed time
+            ghost.userData.state = 'appearing';
+
+            scene.add(ghost);
+            ghostMolecules.push(ghost);
+            console.log(`[Spawn] Added ghost ${ghost.uuid} to scene. Total ghosts: ${ghostMolecules.length}`);
+        }
+
+        // --- Update Ghost Molecules (Keep previous version) ---
+        function updateGhosts(elapsedTime, deltaTime) {
+            // ... (Keep the exact same updateGhosts function from the previous step) ...
+            // It handles fading, rotation, and removal based on userData.state and spawnTime
+             const moleculesToRemove = [];
+             for (let i = ghostMolecules.length - 1; i >= 0; i--) { const ghost = ghostMolecules[i]; if (!ghost || !ghost.userData || !ghost.userData.spawnTime) { console.warn("[Update Warning] Invalid ghost data found, marking for removal."); moleculesToRemove.push(i); continue; } const life = elapsedTime - ghost.userData.spawnTime; ghost.rotation.x += deltaTime * GHOST_ROTATION_SPEED * 0.8; ghost.rotation.y += deltaTime * GHOST_ROTATION_SPEED; let targetVisibility = 0.0; if (ghost.userData.state === 'appearing') { targetVisibility = Math.min(1.0, life / GHOST_FADE_TIME); if (life >= GHOST_FADE_TIME) { ghost.userData.state = 'visible'; targetVisibility = 1.0; } } else if (ghost.userData.state === 'visible') { targetVisibility = 1.0; if (life >= GHOST_LIFESPAN - GHOST_FADE_TIME) { ghost.userData.state = 'disappearing'; } } else if (ghost.userData.state === 'disappearing') { const timeIntoFadeOut = life - (GHOST_LIFESPAN - GHOST_FADE_TIME); targetVisibility = Math.max(0.0, 1.0 - (timeIntoFadeOut / GHOST_FADE_TIME)); if (targetVisibility <= 0.01) { targetVisibility = 0.0; moleculesToRemove.push(i); } } else { targetVisibility = 0.0; moleculesToRemove.push(i); } const currentScale = ghost.scale.x; const scaleTarget = Math.max(0.01, targetVisibility); const newScale = THREE.MathUtils.lerp(currentScale, scaleTarget, deltaTime * 5.0); ghost.scale.setScalar(newScale); const targetOpacity = targetVisibility; ghost.traverse((child) => { if (child.isMesh && child.material && child.material.transparent) { child.material.opacity = THREE.MathUtils.lerp(child.material.opacity, targetOpacity, deltaTime * 5.0); } }); } moleculesToRemove.sort((a, b) => b - a); moleculesToRemove.forEach(index => { const ghost = ghostMolecules[index]; if (ghost) { console.log(`[Remove] Removing ghost ${ghost.uuid} at index ${index}. Remaining: ${ghostMolecules.length - 1}`); scene.remove(ghost); ghost.traverse((child) => { if (child.isMesh && child.material && child.material.isMaterial) { child.material.dispose(); } }); ghostMolecules.splice(index, 1); } else { console.warn(`[Remove Warning] Tried to remove ghost at index ${index}, but it was undefined.`); } });
+        }
+
+        // --- NEW: Handle Keyboard Input ---
+        function handleKeyDown(event) {
+            // Check if the pressed key is 'A' (case-insensitive)
+            if (event.key.toLowerCase() === 'a') {
+                 console.log("'A' key pressed - attempting to spawn ghost.");
+                 // Call the spawn function, passing the current time from the clock
+                 spawnGhostMoleculeNow(clock.getElapsedTime());
+             }
         }
 
 
         // --- Resize Handler ---
-        function onWindowResize() {
-            if (!camera || !renderer) return; // Check if initialized
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
+        function onWindowResize() { /* ... Omitted but keep ... */ if (!camera || !renderer) return; camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); if (backgroundMaterial) { backgroundMaterial.uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight); } }
 
         // --- Animation Loop ---
         function animate() {
-            requestAnimationFrame(animate); // Loop
+            requestAnimationFrame(animate);
+            if (!renderer || !scene || !camera) return;
 
-            if (!controls || !renderer || !scene || !camera) return; // Ensure everything is ready
+            const elapsedTime = clock.getElapsedTime();
+            const deltaTime = clock.getDelta();
 
-            const delta = clock.getDelta(); // Time since last frame
+            if(controls) controls.update();
 
-            controls.update(); // Required if damping is enabled
+            // Update background shader time
+            if (backgroundMaterial) { backgroundMaterial.uniforms.u_time.value = elapsedTime; }
 
-            // Gentle auto-rotation (rotate the group containing the molecule)
-            if (moleculeGroup) {
-                moleculeGroup.rotation.y += delta * 0.2; // Rotate speed based on delta time
-            }
+            // REMOVED automatic spawning call
 
-            renderer.render(scene, camera); // Render the scene
+            // Update ANY existing ghosts (fade, rotate, remove)
+            updateGhosts(elapsedTime, deltaTime);
+
+
+            // Main Molecule Wandering & Vibration
+            if (isMoleculeReady && moleculeGroup) { /* ... Keep same wandering/vibration logic ... */ const moveX = Math.sin(elapsedTime * MOVEMENT_SPEED_X) * MOVEMENT_RADIUS_X; const moveY = Math.cos(elapsedTime * MOVEMENT_SPEED_Y + 1.0) * MOVEMENT_RADIUS_Y; const moveZ = Math.sin(elapsedTime * MOVEMENT_SPEED_Z + 2.0) * MOVEMENT_RADIUS_Z; moleculeGroup.position.set(moveX, moveY, moveZ); moleculeGroup.children.forEach(child => { if (child.userData.isAtom && child.userData.basePosition) { const basePos = child.userData.basePosition; const index = child.userData.atomIndex || 0; const time = elapsedTime * VIBRATION_SPEED; const freq1 = 1.0 + (index * 0.05); const freq2 = 1.3 + (index * 0.03); const freq3 = 0.8 + (index * 0.07); const phaseShift = index * 0.5; const offsetX = Math.sin(time * freq1 + phaseShift) * VIBRATION_AMPLITUDE * 0.7; const offsetY = Math.cos(time * freq2 + phaseShift * 1.2) * VIBRATION_AMPLITUDE; const offsetZ = Math.sin(time * freq3 + phaseShift * 0.8) * VIBRATION_AMPLITUDE * 0.9; child.position.set( basePos.x + offsetX, basePos.y + offsetY, basePos.z + offsetZ ); } }); }
+
+            renderer.render(scene, camera);
         }
 
-        // --- Start the application ---
+        // --- Start ---
         init();
         animate();
 
